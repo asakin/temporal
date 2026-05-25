@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Hook runtime state (don't commit a personal cache)
+.cache/
+state.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# OS
+Thumbs.db
