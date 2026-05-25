@@ -83,7 +83,7 @@ To make a one-line tweak without touching the script, an env-var override is eno
 
 `spotify` and `screenshots` default OFF. They surface personal data (what you're listening to, what's on your desktop) to whichever coding agent is in the current session, including across unrelated conversations. Enable only on hosts where you accept that tradeoff. The script never transmits anything off-host — output is stdout to the local agent only.
 
-State file (`~/.cache/claude-hook/state.json`) is created with mode `0600`.
+State is **per-session** — one JSON file per Claude Code session at `~/.cache/claude-hook/<session_id>.json`, created with mode `0600`, garbage-collected after 7 days (override via `CLAUDE_HOOK_STATE_TTL_DAYS`). New session = fresh state = every enabled field fires on its first prompt. Cadences throttle subsequent runs within the same session.
 
 ## SPEC.md — for agents (and humans) who want their own version
 
