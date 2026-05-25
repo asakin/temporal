@@ -38,10 +38,15 @@ This SPEC defines the contract a hook implementation **MUST** satisfy to interop
 
 ### 3.2 Output format
 
-- **3.2.1** Output **MUST** be plain text on stdout, intended for direct injection into the agent's context window.
-- **3.2.2** Output **SHOULD** be one line per field when fields are short, with a compact bracket-prefixed style (e.g. `[⏱ Sunday afternoon, 3:14 PM EDT]`). Implementations **MAY** combine multiple short fields on one line.
-- **3.2.3** Output **MUST NOT** contain ANSI escapes, control characters, or markdown that would render as something other than its literal text.
-- **3.2.4** Total output for a single prompt **SHOULD** stay under 600 characters (~150 tokens) in the common case.
+- **3.2.1** When invoked by the agent harness (stdin contains a JSON payload), output **MUST** be a JSON object on stdout matching the harness's hook output contract. For Claude Code:
+  ```json
+  {"hookSpecificOutput": {"hookEventName": "<event>", "additionalContext": "<text>"}}
+  ```
+  The `additionalContext` string is what gets injected into the agent's context window.
+- **3.2.2** When invoked manually (no stdin / a TTY), output **MAY** be plain text on stdout for human readability during smoke tests.
+- **3.2.3** Output **SHOULD** be one line per field when fields are short, with a compact bracket-prefixed style (e.g. `[⏱ Monday afternoon, 3:14 PM EDT]`). Implementations **MAY** combine multiple short fields on one line.
+- **3.2.4** Output **MUST NOT** contain ANSI escapes, control characters, or markdown that would render as something other than its literal text.
+- **3.2.5** Total output for a single prompt **SHOULD** stay under 600 characters (~150 tokens) in the common case.
 
 ### 3.3 Cadence
 
@@ -59,9 +64,11 @@ This SPEC defines the contract a hook implementation **MUST** satisfy to interop
 
 ### 3.5 State
 
-- **3.5.1** State **MUST** be stored in a single JSON file at `$XDG_CACHE_HOME/claude-hook/state.json` (defaulting to `~/.cache/claude-hook/state.json`).
+- **3.5.1** State **MUST** be keyed by the `session_id` from the hook payload, stored as `$XDG_CACHE_HOME/claude-hook/<session_id>.json` (defaulting to `~/.cache/claude-hook/<session_id>.json`). Cadences are therefore **per-session**: a new session **MUST** start with empty state and **MUST** emit every enabled field on its first prompt.
 - **3.5.2** State **MUST** be safe to delete; deletion **MUST** simply re-emit all gated fields on next run.
-- **3.5.3** Implementations **MAY** use file locking when concurrent invocations are expected.
+- **3.5.3** Implementations **MUST** garbage-collect state files older than a configurable TTL (default 7 days) on each invocation to keep the state directory bounded.
+- **3.5.4** When `session_id` is absent (manual smoke tests, hooks-tools that don't pass payloads), implementations **SHOULD** fall back to a sentinel filename (`nosession.json`) so the hook stays usable in non-harness contexts.
+- **3.5.5** Implementations **MAY** use file locking when concurrent invocations within the same session are expected.
 
 ## 4. Field catalog (normative)
 

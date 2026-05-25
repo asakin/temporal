@@ -130,16 +130,41 @@ DEFAULT_CONFIG: dict = {
 # Plumbing — config merge, state file, env overrides
 # ─────────────────────────────────────────────────────────────────────────────
 
-STATE_PATH = Path(
+# State is keyed by session_id so cadences are PER-SESSION, not global. Every
+# new Claude Code session — CLI, Desktop, IDE — starts with a clean state file
+# and gets all enabled fields on the first emission. Within a session, cadences
+# throttle subsequent runs normally. Old session files are GC'd after
+# CLAUDE_HOOK_STATE_TTL_DAYS (default 7).
+STATE_DIR = Path(
     os.environ.get(
-        "CLAUDE_HOOK_STATE_PATH",
+        "CLAUDE_HOOK_STATE_DIR",
         os.path.join(
             os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
             "claude-hook",
-            "state.json",
         ),
     )
 )
+
+STATE_TTL_SEC = int(os.environ.get("CLAUDE_HOOK_STATE_TTL_DAYS", "7")) * 86400
+
+
+def state_path(session_id: str) -> Path:
+    # Single-file override remains supported for tests / single-shot smoke runs.
+    if os.environ.get("CLAUDE_HOOK_STATE_PATH"):
+        return Path(os.environ["CLAUDE_HOOK_STATE_PATH"])
+    return STATE_DIR / f"{session_id or 'nosession'}.json"
+
+
+def gc_old_state_files() -> None:
+    if STATE_TTL_SEC <= 0 or not STATE_DIR.is_dir():
+        return
+    cutoff = time.time() - STATE_TTL_SEC
+    for f in STATE_DIR.glob("*.json"):
+        try:
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+        except OSError:
+            continue
 
 
 def _merge(base: dict, override: dict) -> dict:
@@ -196,22 +221,22 @@ def load_config() -> dict:
     return _apply_env_overrides(cfg)
 
 
-def state_load() -> dict:
+def state_load(path: Path) -> dict:
     try:
-        with STATE_PATH.open() as f:
+        with path.open() as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
-def state_save(state: dict) -> None:
+def state_save(path: Path, state: dict) -> None:
     try:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = STATE_PATH.with_suffix(".tmp")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
         with tmp.open("w") as f:
             json.dump(state, f)
         os.chmod(tmp, 0o600)
-        tmp.replace(STATE_PATH)
+        tmp.replace(path)
     except OSError:
         pass  # SPEC 3.1.7 — never crash the hook
 
@@ -505,9 +530,33 @@ FIELDS = [
 ]
 
 
+def _read_hook_payload() -> dict:
+    """Read the hook event payload from stdin (Claude Code passes JSON).
+    Returns {} on parse failure or no stdin; the hook must still produce
+    useful output when invoked directly (smoke tests, manual runs)."""
+    try:
+        raw = sys.stdin.read() if not sys.stdin.isatty() else ""
+    except (OSError, ValueError):
+        raw = ""
+    if not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
 def main() -> int:
+    payload = _read_hook_payload()
+    session_id = payload.get("session_id", "nosession")
+    event = payload.get("hook_event_name", "UserPromptSubmit")
+
+    gc_old_state_files()
+
+    path = state_path(session_id)
     cfg = load_config()
-    state = state_load()
+    state = state_load(path)
+
     lines = []
     for name, fn in FIELDS:
         try:
@@ -517,9 +566,26 @@ def main() -> int:
             value = None
         if value:
             lines.append(f"[{value}]")
-    state_save(state)
-    if lines:
-        sys.stdout.write("\n".join(lines) + "\n")
+
+    state_save(path, state)
+
+    if not lines:
+        return 0
+
+    # Claude Code's documented hook output: a JSON envelope with
+    # additionalContext injected before the user's next message. Falls back to
+    # plain stdout when invoked manually (sys.stdin.isatty()) so smoke tests
+    # stay readable.
+    additional = "\n".join(lines)
+    if sys.stdin.isatty():
+        sys.stdout.write(additional + "\n")
+    else:
+        sys.stdout.write(json.dumps({
+            "hookSpecificOutput": {
+                "hookEventName": event,
+                "additionalContext": additional,
+            }
+        }) + "\n")
     return 0
 
 
