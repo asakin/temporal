@@ -2,7 +2,7 @@
 
 A `UserPromptSubmit` hook for [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) that injects ambient context — time, auth health, repo drift, and a few cool-tax fields — into every prompt the model sees.
 
-v2 of [the original time-awareness gist](https://gist.github.com/asakin/...). Same single-file Python, no dependencies. New fields, per-field cadences, a config block, and a [SPEC.md](./SPEC.md) describing the contract.
+v2 of [the original time-awareness gist]([https://gist.github.com/asakin/...](https://gist.github.com/asakin/e4225721bb8f16dd6bc34f4eec5499f9)). Same single-file Python, no dependencies. New fields, per-field cadences, a config block, and a [SPEC.md](./SPEC.md) describing the contract.
 
 ## Why
 
