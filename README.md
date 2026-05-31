@@ -1,4 +1,4 @@
-# claude-context-hook
+# temporal
 
 A `UserPromptSubmit` hook for [Claude Code](https://docs.claude.com/en/docs/claude-code/overview) that injects ambient context — time, auth health, repo drift, and a few cool-tax fields — into every prompt the model sees.
 
